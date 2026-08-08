@@ -1,0 +1,212 @@
+import React, { useEffect, useState } from "react";
+import { useParams, useNavigate, Link } from "react-router-dom";
+import { ArrowLeft, MapPin, Tag, Sparkles, Trash2 } from "lucide-react";
+import { useAuth } from "../lib/AuthContext";
+import { supabase } from "../lib/supabaseClient";
+import { deleteListingWithPhotos } from "../lib/deleteListing";
+
+export default function ListingDetail() {
+  const { id } = useParams();
+  const navigate = useNavigate();
+  const { user } = useAuth();
+
+  const [listing, setListing] = useState(null);
+  const [seller, setSeller] = useState(null);
+  const [activePhoto, setActivePhoto] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [notFound, setNotFound] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  useEffect(() => {
+    async function load() {
+      setLoading(true);
+      setNotFound(false);
+
+      const { data: listingRow, error } = await supabase
+        .from("listings")
+        .select("id, seller_id, emoji, title, price, seller, loc, images, description, condition, category, notes, created_at")
+        .eq("id", id)
+        .maybeSingle();
+
+      if (error || !listingRow) {
+        setNotFound(true);
+        setLoading(false);
+        return;
+      }
+      setListing(listingRow);
+
+      if (listingRow.seller_id) {
+        const { data: profileRow } = await supabase
+          .from("profiles")
+          .select("full_name, major, dorm, bio")
+          .eq("id", listingRow.seller_id)
+          .maybeSingle();
+        setSeller(profileRow);
+      }
+
+      setLoading(false);
+    }
+    load();
+  }, [id]);
+
+  if (loading) {
+    return <div className="p-10 text-center font-body text-cream">Loading listing...</div>;
+  }
+
+  if (notFound) {
+    return (
+      <div className="p-10 text-center">
+        <p className="font-display text-cream text-2xl mb-4">Couldn't find that listing.</p>
+        <p className="font-body text-cream/90 text-sm mb-6">
+          It may have sold, been taken down, or it's one of the sample cards that isn't real data yet.
+        </p>
+        <Link to="/" className="font-body font-bold text-ink bg-cream px-4 py-2 border-2 border-ink inline-block">
+          Back to the board
+        </Link>
+      </div>
+    );
+  }
+
+  const photos = listing.images && listing.images.length > 0 ? listing.images : null;
+  const isOwner = user && listing.seller_id === user.id;
+
+  async function handleDelete() {
+    const confirmed = window.confirm(`Delete "${listing.title}"? This can't be undone.`);
+    if (!confirmed) return;
+    setDeleting(true);
+    try {
+      await deleteListingWithPhotos(listing);
+      navigate("/profile");
+    } catch (err) {
+      alert(err.message || "Couldn't delete that listing.");
+      setDeleting(false);
+    }
+  }
+
+  return (
+    <div className="px-6 py-12 sm:px-10">
+      <div className="max-w-4xl mx-auto">
+        <button
+          onClick={() => navigate(-1)}
+          className="flex items-center gap-1 text-xs font-bold font-body text-cream mb-6"
+        >
+          <ArrowLeft size={14} /> Back
+        </button>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+          {/* Photos */}
+          <div className="relative">
+            <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 w-[22px] h-[22px] rounded-full border border-black/15 shadow-pin z-10 bg-red" />
+            <div className="border-2 border-ink shadow-card bg-cream p-3">
+              {photos ? (
+                <>
+                  <div className="aspect-square w-full overflow-hidden border-2 border-ink">
+                    <img
+                      src={photos[activePhoto]}
+                      alt={listing.title}
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
+                  {photos.length > 1 && (
+                    <div className="grid grid-cols-5 gap-2 mt-3">
+                      {photos.map((src, i) => (
+                        <button
+                          key={i}
+                          onClick={() => setActivePhoto(i)}
+                          className={`aspect-square overflow-hidden border-2 ${
+                            i === activePhoto ? "border-red" : "border-ink"
+                          }`}
+                        >
+                          <img src={src} alt="" className="w-full h-full object-cover" />
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div className="aspect-square w-full flex items-center justify-center text-8xl bg-yellow border-2 border-ink">
+                  {listing.emoji}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Details */}
+          <div className="relative">
+            <div className="p-6 bg-cream border-2 border-ink shadow-card h-full flex flex-col">
+              <span className="inline-block w-fit px-2 py-0.5 mb-3 text-xs font-bold font-mono bg-ink text-cream">
+                ${listing.price}
+              </span>
+              <h1 className="font-display text-ink text-3xl leading-tight mb-2">{listing.title}</h1>
+
+              <div className="flex flex-wrap gap-2 mb-4">
+                {listing.category && (
+                  <span className="flex items-center gap-1 text-xs font-bold font-body px-2 py-1 bg-sky border border-ink">
+                    <Tag size={12} /> {listing.category}
+                  </span>
+                )}
+                {listing.condition && (
+                  <span className="flex items-center gap-1 text-xs font-bold font-body px-2 py-1 bg-mint border border-ink">
+                    <Sparkles size={12} /> {listing.condition}
+                  </span>
+                )}
+                {listing.loc && (
+                  <span className="flex items-center gap-1 text-xs font-bold font-body px-2 py-1 bg-lilac border border-ink">
+                    <MapPin size={12} /> {listing.loc}
+                  </span>
+                )}
+              </div>
+
+              <p className="font-body text-ink text-sm leading-relaxed whitespace-pre-wrap mb-4">
+                {listing.description}
+              </p>
+
+              {listing.notes && (
+                <div className="mb-4 p-3 bg-yellow/40 border border-ink">
+                  <p className="font-mono text-[10px] text-inkSoft mb-1">GOOD TO KNOW</p>
+                  <p className="font-body text-ink text-sm">{listing.notes}</p>
+                </div>
+              )}
+
+              <div className="mt-auto pt-4 border-t-2 border-dashed border-corkDark">
+                <p className="font-mono text-[10px] text-inkSoft mb-2">SELLER</p>
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-pink border-2 border-ink flex items-center justify-center font-display text-ink">
+                    {(seller?.full_name || listing.seller || "?").slice(0, 1).toUpperCase()}
+                  </div>
+                  <div>
+                    <p className="font-body font-bold text-ink text-sm">
+                      {seller?.full_name || listing.seller}
+                    </p>
+                    {seller?.dorm && (
+                      <p className="font-body text-inkSoft text-xs">{seller.dorm}</p>
+                    )}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  disabled
+                  title="Messaging isn't built yet"
+                  className="mt-4 w-full py-2.5 text-sm font-bold font-body bg-red text-cream border-2 border-ink shadow-pin opacity-60 cursor-not-allowed"
+                >
+                  Message seller (coming soon)
+                </button>
+
+                {isOwner && (
+                  <button
+                    type="button"
+                    onClick={handleDelete}
+                    disabled={deleting}
+                    className="mt-2 w-full flex items-center justify-center gap-2 py-2.5 text-sm font-bold font-body bg-cream text-red border-2 border-red disabled:opacity-60"
+                  >
+                    <Trash2 size={14} /> {deleting ? "Deleting..." : "Delete this listing"}
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

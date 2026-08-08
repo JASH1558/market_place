@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { MapPin, Star, Pencil, LogOut, Save } from "lucide-react";
 import { useAuth } from "../lib/AuthContext";
 import { supabase } from "../lib/supabaseClient";
+import { deleteListingWithPhotos } from "../lib/deleteListing";
 import { StickyCard } from "../components/Bits";
 
 const EMPTY_PROFILE = {
@@ -38,7 +39,7 @@ export default function Profile() {
 
       const { data: listingRows } = await supabase
         .from("listings")
-        .select("id, emoji, title, price, seller, loc")
+        .select("id, emoji, title, price, seller, loc, images, description, condition")
         .eq("seller_id", user.id);
 
       if (listingRows) setListings(listingRows);
@@ -55,6 +56,17 @@ export default function Profile() {
       setEditing(false);
     }
     setSaving(false);
+  }
+
+  async function handleDelete(item) {
+    const confirmed = window.confirm(`Delete "${item.title}"? This can't be undone.`);
+    if (!confirmed) return;
+    try {
+      await deleteListingWithPhotos(item);
+      setListings((prev) => prev.filter((l) => l.id !== item.id));
+    } catch (err) {
+      alert(err.message || "Couldn't delete that listing.");
+    }
   }
 
   const initials = (profile.full_name || user.email || "?")
@@ -169,7 +181,7 @@ export default function Profile() {
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-x-6 gap-y-10">
             {listings.map((item, i) => (
-              <StickyCard key={item.id} item={item} index={i} />
+              <StickyCard key={item.id} item={item} index={i} onDelete={handleDelete} />
             ))}
           </div>
         )}

@@ -20,9 +20,14 @@ export default function Header() {
         <Link to="/" className="hidden sm:inline text-sm font-bold font-body text-inkSoft">
           Browse
         </Link>
-        <button className="hidden sm:inline-flex items-center gap-1 text-sm font-bold font-body px-3 py-1.5 rounded-full bg-yellow text-ink border-2 border-ink">
-          <Plus size={15} /> Post something
-        </button>
+        {user && (
+          <button
+            onClick={() => navigate("/new-listing")}
+            className="hidden sm:inline-flex items-center gap-1 text-sm font-bold font-body px-3 py-1.5 rounded-full bg-yellow text-ink border-2 border-ink"
+          >
+            <Plus size={15} /> Post something
+          </button>
+        )}
 
         {user ? (
           <button

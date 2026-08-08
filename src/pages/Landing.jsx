@@ -7,14 +7,15 @@ import { SAMPLE_LISTINGS, CATEGORIES } from "../lib/sampleData";
 export default function Landing() {
   const [listings, setListings] = useState(SAMPLE_LISTINGS);
   const [query, setQuery] = useState("");
+  const [activeCategory, setActiveCategory] = useState(null);
 
   useEffect(() => {
     async function loadListings() {
       const { data, error } = await supabase
         .from("listings")
-        .select("id, emoji, title, price, seller, loc")
+        .select("id, emoji, title, price, seller, loc, images, description, condition, category")
         .order("created_at", { ascending: false })
-        .limit(12);
+        .limit(50);
 
       if (!error && data && data.length > 0) {
         setListings(data);
@@ -25,9 +26,11 @@ export default function Landing() {
     loadListings();
   }, []);
 
-  const filtered = listings.filter((item) =>
-    item.title.toLowerCase().includes(query.toLowerCase())
-  );
+  const filtered = listings.filter((item) => {
+    const matchesQuery = item.title.toLowerCase().includes(query.toLowerCase());
+    const matchesCategory = !activeCategory || item.category === activeCategory;
+    return matchesQuery && matchesCategory;
+  });
 
   return (
     <div>
@@ -55,10 +58,21 @@ export default function Landing() {
       </div>
 
       <div className="flex flex-wrap justify-center gap-3 px-6 pb-10 sm:px-10">
+        <button
+          onClick={() => setActiveCategory(null)}
+          className={`flex items-center gap-2 px-4 py-2 text-sm font-bold font-body border-2 border-ink rounded-full ${
+            !activeCategory ? "bg-ink text-cream" : "bg-cream text-ink"
+          }`}
+        >
+          All
+        </button>
         {CATEGORIES.map((c) => (
           <button
             key={c.label}
-            className="flex items-center gap-2 px-4 py-2 text-sm font-bold font-body bg-cream text-ink border-2 border-ink rounded-full"
+            onClick={() => setActiveCategory(activeCategory === c.label ? null : c.label)}
+            className={`flex items-center gap-2 px-4 py-2 text-sm font-bold font-body border-2 border-ink rounded-full ${
+              activeCategory === c.label ? "bg-ink text-cream" : "bg-cream text-ink"
+            }`}
           >
             <span>{c.emoji}</span> {c.label}
           </button>
@@ -67,7 +81,7 @@ export default function Landing() {
 
       <div className="px-6 pb-6 sm:px-10">
         <h2 className="font-display text-cream drop-shadow-[2px_2px_0_rgba(43,36,64,0.35)] text-2xl mb-6">
-          Fresh on the board
+          {activeCategory ? `${activeCategory} on the board` : "Fresh on the board"}
         </h2>
         {filtered.length === 0 ? (
           <p className="font-body text-cream/90">Nothing matches that search yet.</p>
