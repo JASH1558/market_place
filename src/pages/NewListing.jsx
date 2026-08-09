@@ -5,6 +5,7 @@ import { useAuth } from "../lib/AuthContext";
 import { supabase } from "../lib/supabaseClient";
 import { CATEGORIES } from "../lib/sampleData";
 import { MIN_PHOTOS, MAX_PHOTOS, CONDITIONS } from "../lib/listingConstants";
+import { compressImage } from "../lib/compressImage";
 import ConfirmDialog from "../components/ConfirmDialog";
 
 export default function NewListing() {
@@ -23,15 +24,26 @@ export default function NewListing() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
+  const [compressing, setCompressing] = useState(false);
 
-  function handleFiles(fileList) {
+  async function handleFiles(fileList) {
     const incoming = Array.from(fileList).filter((f) => f.type.startsWith("image/"));
     const room = MAX_PHOTOS - photos.length;
-    const accepted = incoming.slice(0, room).map((file) => ({
-      file,
-      previewUrl: URL.createObjectURL(file),
-    }));
-    setPhotos((prev) => [...prev, ...accepted]);
+    const toProcess = incoming.slice(0, room);
+    if (toProcess.length === 0) return;
+
+    setCompressing(true);
+    try {
+      const accepted = await Promise.all(
+        toProcess.map(async (file) => {
+          const compressed = await compressImage(file);
+          return { file: compressed, previewUrl: URL.createObjectURL(compressed) };
+        })
+      );
+      setPhotos((prev) => [...prev, ...accepted]);
+    } finally {
+      setCompressing(false);
+    }
   }
 
   function removePhoto(index) {
@@ -192,13 +204,20 @@ export default function NewListing() {
                   </div>
                 ))}
                 {photos.length < MAX_PHOTOS && (
-                  <label className="aspect-square border-2 border-dashed border-ink flex flex-col items-center justify-center gap-1 cursor-pointer text-inkSoft">
+                  <label
+                    className={`aspect-square border-2 border-dashed border-ink flex flex-col items-center justify-center gap-1 text-inkSoft ${
+                      compressing ? "opacity-60" : "cursor-pointer"
+                    }`}
+                  >
                     <Upload size={20} />
-                    <span className="text-[11px] font-body font-bold">Add photo</span>
+                    <span className="text-[11px] font-body font-bold">
+                      {compressing ? "Compressing..." : "Add photo"}
+                    </span>
                     <input
                       type="file"
                       accept="image/*"
                       multiple
+                      disabled={compressing}
                       className="hidden"
                       onChange={(e) => handleFiles(e.target.files)}
                     />

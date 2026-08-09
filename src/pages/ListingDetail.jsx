@@ -1,10 +1,13 @@
 import React, { useEffect, useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
-import { ArrowLeft, MapPin, Tag, Sparkles, Trash2, Pencil, CheckCircle2 } from "lucide-react";
+import { ArrowLeft, MapPin, Tag, Sparkles, Trash2, Pencil, CheckCircle2, Heart, Star, MessageCircle } from "lucide-react";
 import { useAuth } from "../lib/AuthContext";
 import { supabase } from "../lib/supabaseClient";
 import { deleteListingWithPhotos } from "../lib/deleteListing";
+import { getAverageRating } from "../lib/ratings";
+import { getMyRequestForListing } from "../lib/interestRequests";
 import MarkSoldDialog from "../components/MarkSoldDialog";
+import InterestDialog from "../components/InterestDialog";
 
 export default function ListingDetail() {
   const { id } = useParams();
@@ -18,6 +21,11 @@ export default function ListingDetail() {
   const [notFound, setNotFound] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [showSoldDialog, setShowSoldDialog] = useState(false);
+  const [showInterestDialog, setShowInterestDialog] = useState(false);
+  const [requestSent, setRequestSent] = useState(false);
+  const [sellerRating, setSellerRating] = useState({ average: null, count: 0 });
+  const [myName, setMyName] = useState("");
+  const [myRequestId, setMyRequestId] = useState(null);
 
   useEffect(() => {
     async function load() {
@@ -39,17 +47,45 @@ export default function ListingDetail() {
 
       if (listingRow.seller_id) {
         const { data: profileRow } = await supabase
-          .from("profiles")
-          .select("full_name, major, dorm, bio")
+          .from("public_profiles")
+          .select("full_name, degree, year, branch, dorm, bio")
           .eq("id", listingRow.seller_id)
           .maybeSingle();
         setSeller(profileRow);
+
+        const rating = await getAverageRating(listingRow.seller_id);
+        setSellerRating(rating);
       }
 
       setLoading(false);
     }
     load();
   }, [id]);
+
+  useEffect(() => {
+    async function loadMyName() {
+      if (!user) return;
+      const { data } = await supabase
+        .from("profiles")
+        .select("full_name")
+        .eq("id", user.id)
+        .maybeSingle();
+      setMyName(data?.full_name || user.email);
+    }
+    loadMyName();
+  }, [user]);
+
+  useEffect(() => {
+    async function loadMyRequest() {
+      if (!user || !listing || listing.seller_id === user.id) return;
+      const existing = await getMyRequestForListing(listing.id, user.id);
+      if (existing) {
+        setMyRequestId(existing.id);
+        if (existing.status !== "declined") setRequestSent(true);
+      }
+    }
+    loadMyRequest();
+  }, [user, listing]);
 
   if (loading) {
     return <div className="p-10 text-center font-body text-cream">Loading listing...</div>;
@@ -177,25 +213,66 @@ export default function ListingDetail() {
                     {(seller?.full_name || listing.seller || "?").slice(0, 1).toUpperCase()}
                   </div>
                   <div>
-                    <p className="font-body font-bold text-ink text-sm">
-                      {seller?.full_name || listing.seller}
-                    </p>
+                    <div className="flex items-center gap-2">
+                      <p className="font-body font-bold text-ink text-sm">
+                        {seller?.full_name || listing.seller}
+                      </p>
+                      {sellerRating.average !== null && (
+                        <span className="flex items-center gap-1 text-[10px] font-bold font-mono px-1.5 py-0.5 bg-yellow border border-ink">
+                          <Star size={10} fill="#2B2440" /> {sellerRating.average.toFixed(1)} (
+                          {sellerRating.count})
+                        </span>
+                      )}
+                    </div>
                     {seller?.dorm && (
                       <p className="font-body text-inkSoft text-xs">{seller.dorm}</p>
                     )}
                   </div>
                 </div>
-                <button
-                  type="button"
-                  disabled
-                  title="Messaging isn't built yet"
-                  className="mt-4 w-full py-2.5 text-sm font-bold font-body bg-red text-cream border-2 border-ink shadow-pin opacity-60 cursor-not-allowed"
-                >
-                  Message seller (coming soon)
-                </button>
+
+                {!isOwner && (
+                  <>
+                    {!user ? (
+                      <Link
+                        to="/login"
+                        className="mt-4 block text-center w-full py-2.5 text-sm font-bold font-body bg-red text-cream border-2 border-ink shadow-pin"
+                      >
+                        Log in to express interest
+                      </Link>
+                    ) : requestSent ? (
+                      <div className="mt-4 flex flex-col gap-2">
+                        <p className="w-full text-center py-2.5 text-sm font-bold font-body bg-mint/40 text-ink border-2 border-ink">
+                          Request sent — you'll be notified if they accept.
+                        </p>
+                        {myRequestId && (
+                          <Link
+                            to={`/messages/${myRequestId}`}
+                            className="w-full flex items-center justify-center gap-2 py-2.5 text-sm font-bold font-body bg-sky text-ink border-2 border-ink shadow-pin"
+                          >
+                            <MessageCircle size={14} /> Message seller
+                          </Link>
+                        )}
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setShowInterestDialog(true)}
+                        className="mt-4 w-full flex items-center justify-center gap-2 py-2.5 text-sm font-bold font-body bg-red text-cream border-2 border-ink shadow-pin"
+                      >
+                        <Heart size={14} /> I'm interested
+                      </button>
+                    )}
+                  </>
+                )}
 
                 {isOwner && (
                   <>
+                    <Link
+                      to="/messages"
+                      className="mt-2 w-full flex items-center justify-center gap-2 py-2.5 text-sm font-bold font-body bg-lilac text-ink border-2 border-ink shadow-pin"
+                    >
+                      <MessageCircle size={14} /> Messages
+                    </Link>
                     <button
                       type="button"
                       onClick={() => navigate(`/edit-listing/${listing.id}`)}
@@ -231,6 +308,19 @@ export default function ListingDetail() {
           listing={listing}
           onClose={() => setShowSoldDialog(false)}
           onSold={() => navigate("/profile")}
+        />
+      )}
+
+      {showInterestDialog && user && (
+        <InterestDialog
+          listing={listing}
+          buyerId={user.id}
+          buyerName={myName || user.email}
+          onClose={() => setShowInterestDialog(false)}
+          onSent={(req) => {
+            setRequestSent(true);
+            if (req) setMyRequestId(req.id);
+          }}
         />
       )}
     </div>

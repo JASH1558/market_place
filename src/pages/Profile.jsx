@@ -6,6 +6,8 @@ import { supabase } from "../lib/supabaseClient";
 import { deleteListingWithPhotos } from "../lib/deleteListing";
 import { StickyCard } from "../components/Bits";
 import MarkSoldDialog from "../components/MarkSoldDialog";
+import RatingDialog from "../components/RatingDialog";
+import { getAverageRating, getMyRatedOrderIds } from "../lib/ratings";
 import { DEGREES, YEARS, BRANCHES } from "../lib/profileOptions";
 
 const EMPTY_PROFILE = {
@@ -30,6 +32,9 @@ export default function Profile() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [soldDialogItem, setSoldDialogItem] = useState(null);
+  const [myRating, setMyRating] = useState({ average: null, count: 0 });
+  const [ratedOrderIds, setRatedOrderIds] = useState(new Set());
+  const [ratingTarget, setRatingTarget] = useState(null); // { order, rateeId, rateeName }
 
   useEffect(() => {
     async function load() {
@@ -56,6 +61,12 @@ export default function Profile() {
         .or(`seller_id.eq.${user.id},buyer_id.eq.${user.id}`)
         .order("sold_at", { ascending: false });
       if (orderRows) setOrders(orderRows);
+
+      const rating = await getAverageRating(user.id);
+      setMyRating(rating);
+
+      const rated = await getMyRatedOrderIds(user.id);
+      setRatedOrderIds(rated);
 
       setLoading(false);
     }
@@ -179,9 +190,11 @@ export default function Profile() {
                     <h1 className="font-display text-ink text-3xl">
                       {profile.full_name || user.email}
                     </h1>
-                    <span className="flex items-center gap-1 text-xs font-bold font-mono px-2 py-0.5 bg-yellow border border-ink self-center">
-                      <Star size={12} fill="#2B2440" /> 4.8
-                    </span>
+                    {myRating.average !== null && (
+                      <span className="flex items-center gap-1 text-xs font-bold font-mono px-2 py-0.5 bg-yellow border border-ink self-center">
+                        <Star size={12} fill="#2B2440" /> {myRating.average.toFixed(1)} ({myRating.count})
+                      </span>
+                    )}
                   </div>
                   <p className="font-body text-inkSoft font-bold text-sm">
                     {profile.degree || profile.year || profile.branch
@@ -309,6 +322,24 @@ export default function Profile() {
                 <p className="font-mono text-[10px] text-inkSoft shrink-0">
                   {new Date(o.sold_at).toLocaleDateString()}
                 </p>
+                {ratedOrderIds.has(o.id) ? (
+                  <span className="font-mono text-[10px] text-mint shrink-0">✓ Rated</span>
+                ) : (
+                  (ordersTab === "sold" ? o.buyer_id : o.seller_id) && (
+                    <button
+                      onClick={() =>
+                        setRatingTarget({
+                          order: o,
+                          rateeId: ordersTab === "sold" ? o.buyer_id : o.seller_id,
+                          rateeName: ordersTab === "sold" ? o.buyer_email : o.seller,
+                        })
+                      }
+                      className="shrink-0 px-2 py-1 text-[10px] font-bold font-body bg-yellow border border-ink"
+                    >
+                      Rate
+                    </button>
+                  )
+                )}
               </div>
             ))}
           </div>
@@ -320,6 +351,17 @@ export default function Profile() {
           listing={soldDialogItem}
           onClose={() => setSoldDialogItem(null)}
           onSold={handleSoldComplete}
+        />
+      )}
+
+      {ratingTarget && (
+        <RatingDialog
+          order={ratingTarget.order}
+          raterId={user.id}
+          rateeId={ratingTarget.rateeId}
+          rateeName={ratingTarget.rateeName}
+          onClose={() => setRatingTarget(null)}
+          onRated={(orderId) => setRatedOrderIds((prev) => new Set(prev).add(orderId))}
         />
       )}
     </div>

@@ -7,6 +7,7 @@ import Profile from "./pages/Profile";
 import NewListing from "./pages/NewListing";
 import EditListing from "./pages/EditListing";
 import ListingDetail from "./pages/ListingDetail";
+import Messages from "./pages/Messages";
 import ProtectedRoute from "./components/ProtectedRoute";
 
 export default function App() {
@@ -38,6 +39,22 @@ export default function App() {
           element={
             <ProtectedRoute>
               <EditListing />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/messages"
+          element={
+            <ProtectedRoute>
+              <Messages />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/messages/:requestId"
+          element={
+            <ProtectedRoute>
+              <Messages />
             </ProtectedRoute>
           }
         />

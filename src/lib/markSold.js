@@ -1,12 +1,12 @@
 import { supabase } from "./supabaseClient";
 
 export async function findProfileByEmail(email) {
-  const { data } = await supabase
-    .from("profiles")
-    .select("id, full_name")
-    .eq("email", email.trim().toLowerCase())
-    .maybeSingle();
-  return data || null;
+  const { data, error } = await supabase.rpc("find_buyer_by_email", {
+    lookup_email: email,
+  });
+  if (error) throw error;
+  // rpc() returning a `table(...)` comes back as an array
+  return (data && data[0]) || null;
 }
 
 export async function markListingSold(listing, buyerEmail, buyerId) {
