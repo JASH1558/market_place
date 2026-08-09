@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
-import { ArrowLeft, MapPin, Tag, Sparkles, Trash2 } from "lucide-react";
+import { ArrowLeft, MapPin, Tag, Sparkles, Trash2, Pencil, CheckCircle2 } from "lucide-react";
 import { useAuth } from "../lib/AuthContext";
 import { supabase } from "../lib/supabaseClient";
 import { deleteListingWithPhotos } from "../lib/deleteListing";
+import MarkSoldDialog from "../components/MarkSoldDialog";
 
 export default function ListingDetail() {
   const { id } = useParams();
@@ -16,6 +17,7 @@ export default function ListingDetail() {
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [showSoldDialog, setShowSoldDialog] = useState(false);
 
   useEffect(() => {
     async function load() {
@@ -193,20 +195,44 @@ export default function ListingDetail() {
                 </button>
 
                 {isOwner && (
-                  <button
-                    type="button"
-                    onClick={handleDelete}
-                    disabled={deleting}
-                    className="mt-2 w-full flex items-center justify-center gap-2 py-2.5 text-sm font-bold font-body bg-cream text-red border-2 border-red disabled:opacity-60"
-                  >
-                    <Trash2 size={14} /> {deleting ? "Deleting..." : "Delete this listing"}
-                  </button>
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => navigate(`/edit-listing/${listing.id}`)}
+                      className="mt-2 w-full flex items-center justify-center gap-2 py-2.5 text-sm font-bold font-body bg-sky text-ink border-2 border-ink shadow-pin"
+                    >
+                      <Pencil size={14} /> Edit listing
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowSoldDialog(true)}
+                      className="mt-2 w-full flex items-center justify-center gap-2 py-2.5 text-sm font-bold font-body bg-mint text-ink border-2 border-ink shadow-pin"
+                    >
+                      <CheckCircle2 size={14} /> Mark as sold
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleDelete}
+                      disabled={deleting}
+                      className="mt-2 w-full flex items-center justify-center gap-2 py-2.5 text-sm font-bold font-body bg-cream text-red border-2 border-red disabled:opacity-60"
+                    >
+                      <Trash2 size={14} /> {deleting ? "Deleting..." : "Delete this listing"}
+                    </button>
+                  </>
                 )}
               </div>
             </div>
           </div>
         </div>
       </div>
+
+      {showSoldDialog && (
+        <MarkSoldDialog
+          listing={listing}
+          onClose={() => setShowSoldDialog(false)}
+          onSold={() => navigate("/profile")}
+        />
+      )}
     </div>
   );
 }

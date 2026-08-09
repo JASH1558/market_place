@@ -1,6 +1,6 @@
 import React from "react";
 import { Link } from "react-router-dom";
-import { MapPin, Trash2 } from "lucide-react";
+import { MapPin, Trash2, Pencil, CheckCircle2 } from "lucide-react";
 
 export function PushPin({ color = "#E4572E", className = "" }) {
   return (
@@ -22,7 +22,7 @@ export function TapeStrip() {
 const STICKY_BG_CLASSES = ["bg-yellow", "bg-pink", "bg-mint", "bg-sky", "bg-lilac"];
 const ROTATIONS = [-4, 3, -2, 5, -5, 2, -3, 4];
 
-export function StickyCard({ item, index = 0, onDelete }) {
+export function StickyCard({ item, index = 0, ownerActions }) {
   const bgClass = STICKY_BG_CLASSES[index % STICKY_BG_CLASSES.length];
   const rotation = ROTATIONS[index % ROTATIONS.length];
 
@@ -32,19 +32,51 @@ export function StickyCard({ item, index = 0, onDelete }) {
       style={{ transform: `rotate(${rotation}deg)` }}
     >
       <PushPin color={index % 2 === 0 ? "#E4572E" : "#2B2440"} />
-      {onDelete && (
-        <button
-          type="button"
-          title="Delete listing"
-          onClick={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            onDelete(item);
-          }}
-          className="absolute -top-2 -right-2 z-20 w-7 h-7 rounded-full bg-red text-cream border-2 border-ink flex items-center justify-center shadow-pin"
-        >
-          <Trash2 size={13} />
-        </button>
+      {ownerActions && (
+        <div className="absolute -top-3 right-1 z-20 flex gap-1">
+          {ownerActions.onEdit && (
+            <button
+              type="button"
+              title="Edit listing"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                ownerActions.onEdit(item);
+              }}
+              className="w-7 h-7 rounded-full bg-sky text-ink border-2 border-ink flex items-center justify-center shadow-pin"
+            >
+              <Pencil size={12} />
+            </button>
+          )}
+          {ownerActions.onMarkSold && (
+            <button
+              type="button"
+              title="Mark as sold"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                ownerActions.onMarkSold(item);
+              }}
+              className="w-7 h-7 rounded-full bg-mint text-ink border-2 border-ink flex items-center justify-center shadow-pin"
+            >
+              <CheckCircle2 size={12} />
+            </button>
+          )}
+          {ownerActions.onDelete && (
+            <button
+              type="button"
+              title="Delete listing"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                ownerActions.onDelete(item);
+              }}
+              className="w-7 h-7 rounded-full bg-red text-cream border-2 border-ink flex items-center justify-center shadow-pin"
+            >
+              <Trash2 size={12} />
+            </button>
+          )}
+        </div>
       )}
       <Link
         to={`/listing/${item.id}`}

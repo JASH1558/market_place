@@ -5,10 +5,14 @@ import { useAuth } from "../lib/AuthContext";
 import { supabase } from "../lib/supabaseClient";
 import { deleteListingWithPhotos } from "../lib/deleteListing";
 import { StickyCard } from "../components/Bits";
+import MarkSoldDialog from "../components/MarkSoldDialog";
+import { DEGREES, YEARS, BRANCHES } from "../lib/profileOptions";
 
 const EMPTY_PROFILE = {
   full_name: "",
-  major: "",
+  degree: "",
+  year: "",
+  branch: "",
   dorm: "",
   bio: "",
 };
@@ -21,14 +25,17 @@ export default function Profile() {
   const [draft, setDraft] = useState(EMPTY_PROFILE);
   const [editing, setEditing] = useState(false);
   const [listings, setListings] = useState([]);
+  const [orders, setOrders] = useState([]);
+  const [ordersTab, setOrdersTab] = useState("sold"); // "sold" | "bought"
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [soldDialogItem, setSoldDialogItem] = useState(null);
 
   useEffect(() => {
     async function load() {
       const { data: profileRow } = await supabase
         .from("profiles")
-        .select("full_name, major, dorm, bio")
+        .select("full_name, degree, year, branch, dorm, bio")
         .eq("id", user.id)
         .maybeSingle();
 
@@ -39,10 +46,17 @@ export default function Profile() {
 
       const { data: listingRows } = await supabase
         .from("listings")
-        .select("id, emoji, title, price, seller, loc, images, description, condition")
+        .select("id, seller_id, emoji, title, price, seller, loc, images, description, condition, category")
         .eq("seller_id", user.id);
-
       if (listingRows) setListings(listingRows);
+
+      const { data: orderRows } = await supabase
+        .from("orders")
+        .select("*")
+        .or(`seller_id.eq.${user.id},buyer_id.eq.${user.id}`)
+        .order("sold_at", { ascending: false });
+      if (orderRows) setOrders(orderRows);
+
       setLoading(false);
     }
     load();
@@ -69,12 +83,20 @@ export default function Profile() {
     }
   }
 
+  function handleSoldComplete(listingId) {
+    setListings((prev) => prev.filter((l) => l.id !== listingId));
+  }
+
   const initials = (profile.full_name || user.email || "?")
     .split(" ")
     .map((p) => p[0])
     .join("")
     .slice(0, 2)
     .toUpperCase();
+
+  const soldOrders = orders.filter((o) => o.seller_id === user.id);
+  const boughtOrders = orders.filter((o) => o.buyer_id === user.id);
+  const visibleOrders = ordersTab === "sold" ? soldOrders : boughtOrders;
 
   if (loading) {
     return <div className="p-10 text-center font-body text-cream">Loading your profile...</div>;
@@ -99,12 +121,44 @@ export default function Profile() {
                     placeholder="Full name"
                     className="font-display text-xl px-2 py-1 border-2 border-ink bg-white"
                   />
-                  <input
-                    value={draft.major}
-                    onChange={(e) => setDraft({ ...draft, major: e.target.value })}
-                    placeholder="Year · Major"
-                    className="font-body text-sm px-2 py-1 border-2 border-ink bg-white"
-                  />
+                  <div className="grid grid-cols-3 gap-2">
+                    <select
+                      value={draft.degree}
+                      onChange={(e) => setDraft({ ...draft, degree: e.target.value })}
+                      className="font-body text-sm px-2 py-1.5 border-2 border-ink bg-white"
+                    >
+                      <option value="">Degree</option>
+                      {DEGREES.map((d) => (
+                        <option key={d} value={d}>
+                          {d}
+                        </option>
+                      ))}
+                    </select>
+                    <select
+                      value={draft.year}
+                      onChange={(e) => setDraft({ ...draft, year: e.target.value })}
+                      className="font-body text-sm px-2 py-1.5 border-2 border-ink bg-white"
+                    >
+                      <option value="">Year</option>
+                      {YEARS.map((y) => (
+                        <option key={y} value={y}>
+                          Year {y}
+                        </option>
+                      ))}
+                    </select>
+                    <select
+                      value={draft.branch}
+                      onChange={(e) => setDraft({ ...draft, branch: e.target.value })}
+                      className="font-body text-sm px-2 py-1.5 border-2 border-ink bg-white"
+                    >
+                      <option value="">Branch</option>
+                      {BRANCHES.map((b) => (
+                        <option key={b} value={b}>
+                          {b}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                   <input
                     value={draft.dorm}
                     onChange={(e) => setDraft({ ...draft, dorm: e.target.value })}
@@ -129,7 +183,17 @@ export default function Profile() {
                       <Star size={12} fill="#2B2440" /> 4.8
                     </span>
                   </div>
-                  <p className="font-body text-inkSoft font-bold text-sm">{profile.major || "Add your year and major"}</p>
+                  <p className="font-body text-inkSoft font-bold text-sm">
+                    {profile.degree || profile.year || profile.branch
+                      ? [
+                          profile.degree,
+                          profile.year ? `Year ${profile.year}` : null,
+                          profile.branch,
+                        ]
+                          .filter(Boolean)
+                          .join(" · ")
+                      : "Add your degree, year, and branch"}
+                  </p>
                   <p className="font-body text-inkSoft text-[13px] flex items-center gap-1 justify-center sm:justify-start mt-1">
                     <MapPin size={13} /> {profile.dorm || "Add where to find you"}
                   </p>
@@ -177,15 +241,87 @@ export default function Profile() {
           My listings
         </h2>
         {listings.length === 0 ? (
-          <p className="font-body text-cream/90">You haven't posted anything yet.</p>
+          <p className="font-body text-cream/90 mb-14">You haven't posted anything yet.</p>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-x-6 gap-y-10">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-x-6 gap-y-10 mb-14">
             {listings.map((item, i) => (
-              <StickyCard key={item.id} item={item} index={i} onDelete={handleDelete} />
+              <StickyCard
+                key={item.id}
+                item={item}
+                index={i}
+                ownerActions={{
+                  onEdit: (it) => navigate(`/edit-listing/${it.id}`),
+                  onMarkSold: (it) => setSoldDialogItem(it),
+                  onDelete: handleDelete,
+                }}
+              />
+            ))}
+          </div>
+        )}
+
+        {/* Past orders */}
+        <h2 className="font-display text-cream drop-shadow-[2px_2px_0_rgba(43,36,64,0.35)] text-xl mb-4">
+          Past orders
+        </h2>
+        <div className="flex gap-2 mb-6">
+          <button
+            onClick={() => setOrdersTab("sold")}
+            className={`px-4 py-1.5 text-sm font-bold font-body border-2 border-ink rounded-full ${
+              ordersTab === "sold" ? "bg-ink text-cream" : "bg-cream text-ink"
+            }`}
+          >
+            Sold ({soldOrders.length})
+          </button>
+          <button
+            onClick={() => setOrdersTab("bought")}
+            className={`px-4 py-1.5 text-sm font-bold font-body border-2 border-ink rounded-full ${
+              ordersTab === "bought" ? "bg-ink text-cream" : "bg-cream text-ink"
+            }`}
+          >
+            Bought ({boughtOrders.length})
+          </button>
+        </div>
+
+        {visibleOrders.length === 0 ? (
+          <p className="font-body text-cream/90">
+            {ordersTab === "sold" ? "Nothing sold yet." : "Nothing bought yet."}
+          </p>
+        ) : (
+          <div className="flex flex-col gap-3">
+            {visibleOrders.map((o) => (
+              <div
+                key={o.id}
+                className="flex items-center gap-4 p-3 bg-cream border-2 border-ink"
+              >
+                <div className="w-14 h-14 shrink-0 border-2 border-ink overflow-hidden bg-yellow flex items-center justify-center text-2xl">
+                  {o.images && o.images.length > 0 ? (
+                    <img src={o.images[0]} alt="" className="w-full h-full object-cover" />
+                  ) : (
+                    o.emoji || "🏷️"
+                  )}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-display text-ink text-base truncate">{o.title}</p>
+                  <p className="font-body text-inkSoft text-xs">
+                    ${o.price} · {ordersTab === "sold" ? `to ${o.buyer_email}` : `from ${o.seller}`}
+                  </p>
+                </div>
+                <p className="font-mono text-[10px] text-inkSoft shrink-0">
+                  {new Date(o.sold_at).toLocaleDateString()}
+                </p>
+              </div>
             ))}
           </div>
         )}
       </div>
+
+      {soldDialogItem && (
+        <MarkSoldDialog
+          listing={soldDialogItem}
+          onClose={() => setSoldDialogItem(null)}
+          onSold={handleSoldComplete}
+        />
+      )}
     </div>
   );
 }

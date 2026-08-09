@@ -5,6 +5,7 @@ import Landing from "./pages/Landing";
 import Login from "./pages/Login";
 import Profile from "./pages/Profile";
 import NewListing from "./pages/NewListing";
+import EditListing from "./pages/EditListing";
 import ListingDetail from "./pages/ListingDetail";
 import ProtectedRoute from "./components/ProtectedRoute";
 
@@ -29,6 +30,14 @@ export default function App() {
           element={
             <ProtectedRoute>
               <NewListing />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/edit-listing/:id"
+          element={
+            <ProtectedRoute>
+              <EditListing />
             </ProtectedRoute>
           }
         />

@@ -1,15 +1,20 @@
-import React, { useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { ArrowLeft, Upload, X, Star } from "lucide-react";
+import React, { useEffect, useState } from "react";
+import { useParams, useNavigate } from "react-router-dom";
+import { ArrowLeft, Upload, X, Star, Clock } from "lucide-react";
 import { useAuth } from "../lib/AuthContext";
 import { supabase } from "../lib/supabaseClient";
 import { CATEGORIES } from "../lib/sampleData";
-import { MIN_PHOTOS, MAX_PHOTOS, CONDITIONS } from "../lib/listingConstants";
+import { MIN_PHOTOS, MAX_PHOTOS, CONDITIONS, EDIT_COOLDOWN_MS } from "../lib/listingConstants";
 import ConfirmDialog from "../components/ConfirmDialog";
 
-export default function NewListing() {
+export default function EditListing() {
+  const { id } = useParams();
   const { user } = useAuth();
   const navigate = useNavigate();
+
+  const [loading, setLoading] = useState(true);
+  const [notFound, setNotFound] = useState(false);
+  const [lockedUntil, setLockedUntil] = useState(null);
 
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -18,38 +23,77 @@ export default function NewListing() {
   const [condition, setCondition] = useState(CONDITIONS[0]);
   const [loc, setLoc] = useState("");
   const [notes, setNotes] = useState("");
-  const [photos, setPhotos] = useState([]); // { file, previewUrl }
-  const [coverIndex, setCoverIndex] = useState(0);
+
+  // existingPhotos: URLs already uploaded. newPhotos: { file, previewUrl } not yet uploaded.
+  const [existingPhotos, setExistingPhotos] = useState([]);
+  const [newPhotos, setNewPhotos] = useState([]);
+  const [coverUrl, setCoverUrl] = useState(null); // tracks cover among existingPhotos only, for simplicity
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
 
+  useEffect(() => {
+    async function load() {
+      const { data, error: fetchError } = await supabase
+        .from("listings")
+        .select("*")
+        .eq("id", id)
+        .eq("seller_id", user.id)
+        .maybeSingle();
+
+      if (fetchError || !data) {
+        setNotFound(true);
+        setLoading(false);
+        return;
+      }
+
+      setTitle(data.title || "");
+      setDescription(data.description || "");
+      setPrice(String(data.price ?? ""));
+      setCategory(data.category || CATEGORIES[0].label);
+      setCondition(data.condition || CONDITIONS[0]);
+      setLoc(data.loc || "");
+      setNotes(data.notes || "");
+      setExistingPhotos(data.images || []);
+      setCoverUrl(data.images?.[0] || null);
+
+      if (data.last_edited_at) {
+        const unlockAt = new Date(data.last_edited_at).getTime() + EDIT_COOLDOWN_MS;
+        if (Date.now() < unlockAt) setLockedUntil(new Date(unlockAt));
+      }
+
+      setLoading(false);
+    }
+    load();
+  }, [id, user.id]);
+
+  const totalPhotoCount = existingPhotos.length + newPhotos.length;
+
   function handleFiles(fileList) {
     const incoming = Array.from(fileList).filter((f) => f.type.startsWith("image/"));
-    const room = MAX_PHOTOS - photos.length;
+    const room = MAX_PHOTOS - totalPhotoCount;
     const accepted = incoming.slice(0, room).map((file) => ({
       file,
       previewUrl: URL.createObjectURL(file),
     }));
-    setPhotos((prev) => [...prev, ...accepted]);
+    setNewPhotos((prev) => [...prev, ...accepted]);
   }
 
-  function removePhoto(index) {
-    setPhotos((prev) => {
+  function removeExisting(url) {
+    setExistingPhotos((prev) => prev.filter((u) => u !== url));
+    if (coverUrl === url) setCoverUrl(null);
+  }
+
+  function removeNew(index) {
+    setNewPhotos((prev) => {
       URL.revokeObjectURL(prev[index].previewUrl);
-      const next = prev.filter((_, i) => i !== index);
-      return next;
-    });
-    setCoverIndex((prev) => {
-      if (index === prev) return 0;
-      if (index < prev) return prev - 1;
-      return prev;
+      return prev.filter((_, i) => i !== index);
     });
   }
 
   function validate() {
-    if (photos.length < MIN_PHOTOS) {
-      setError(`Add at least ${MIN_PHOTOS} photos (you have ${photos.length}).`);
+    if (totalPhotoCount < MIN_PHOTOS) {
+      setError(`Keep at least ${MIN_PHOTOS} photos (you have ${totalPhotoCount}).`);
       return false;
     }
     if (!price || Number(price) < 0) {
@@ -66,72 +110,103 @@ export default function NewListing() {
     setShowConfirm(true);
   }
 
-  async function handleConfirmPost() {
+  async function handleConfirmSave() {
     setBusy(true);
     setError("");
     try {
-      // 1. Upload each photo to Storage under the user's own folder
-      const uploadedUrls = [];
-      for (let i = 0; i < photos.length; i++) {
-        const { file } = photos[i];
+      // Upload any newly added photos
+      const uploadedNewUrls = [];
+      for (let i = 0; i < newPhotos.length; i++) {
+        const { file } = newPhotos[i];
         const ext = file.name.split(".").pop();
         const path = `${user.id}/${Date.now()}-${i}.${ext}`;
-
         const { error: uploadError } = await supabase.storage
           .from("listing-photos")
           .upload(path, file);
         if (uploadError) throw uploadError;
-
         const { data: publicUrlData } = supabase.storage
           .from("listing-photos")
           .getPublicUrl(path);
-        uploadedUrls.push(publicUrlData.publicUrl);
+        uploadedNewUrls.push(publicUrlData.publicUrl);
       }
 
-      // Put the chosen cover photo first
-      const orderedUrls = [
-        uploadedUrls[coverIndex],
-        ...uploadedUrls.filter((_, i) => i !== coverIndex),
-      ];
-
-      // 2. Look up a display name for "seller"
-      const { data: profileRow } = await supabase
-        .from("profiles")
-        .select("full_name")
-        .eq("id", user.id)
-        .maybeSingle();
+      const allUrls = [...existingPhotos, ...uploadedNewUrls];
+      // Cover photo: whichever existing URL was chosen, otherwise just keep upload order
+      const finalUrls = coverUrl
+        ? [coverUrl, ...allUrls.filter((u) => u !== coverUrl)]
+        : allUrls;
 
       const emoji = CATEGORIES.find((c) => c.label === category)?.emoji || "🏷️";
 
-      // 3. Insert the listing row
-      const { error: insertError } = await supabase.from("listings").insert({
-        seller_id: user.id,
-        seller: profileRow?.full_name || user.email,
-        title,
-        description,
-        price: Number(price),
-        category,
-        condition,
-        loc,
-        notes,
-        emoji,
-        images: orderedUrls,
-      });
-      if (insertError) throw insertError;
+      const { error: updateError } = await supabase
+        .from("listings")
+        .update({
+          title,
+          description,
+          price: Number(price),
+          category,
+          condition,
+          loc,
+          notes,
+          emoji,
+          images: finalUrls,
+        })
+        .eq("id", id);
 
-      navigate("/profile");
+      if (updateError) throw updateError;
+
+      navigate(`/listing/${id}`);
     } catch (err) {
-      setError(err.message || "Something went wrong posting your listing.");
+      setError(err.message || "Couldn't save your changes.");
       setShowConfirm(false);
     } finally {
       setBusy(false);
     }
   }
 
+  if (loading) {
+    return <div className="p-10 text-center font-body text-cream">Loading listing...</div>;
+  }
+
+  if (notFound) {
+    return (
+      <div className="p-10 text-center">
+        <p className="font-display text-cream text-2xl mb-4">Can't edit that listing.</p>
+        <p className="font-body text-cream/90 text-sm">
+          Either it doesn't exist anymore, or it isn't yours to edit.
+        </p>
+      </div>
+    );
+  }
+
+  if (lockedUntil) {
+    return (
+      <div className="px-6 py-16 text-center max-w-md mx-auto">
+        <div className="p-8 bg-cream border-2 border-ink shadow-card">
+          <Clock size={28} className="mx-auto text-inkSoft mb-3" />
+          <h1 className="font-display text-ink text-2xl mb-2">Not yet</h1>
+          <p className="font-body text-inkSoft text-sm">
+            You can only edit a listing once every 2 hours. You can edit "{title}" again at{" "}
+            <span className="font-bold text-ink">
+              {lockedUntil.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+            </span>
+            .
+          </p>
+          <button
+            onClick={() => navigate(-1)}
+            className="mt-6 px-4 py-2 text-sm font-bold font-body bg-ink text-cream border-2 border-ink"
+          >
+            Back
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="px-6 py-12 sm:px-10">
       <div className="max-w-2xl mx-auto relative">
-        <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 w-[22px] h-[22px] rounded-full border border-black/15 shadow-pin z-10 bg-ink" />
+        <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 w-[22px] h-[22px] rounded-full border border-black/15 shadow-pin z-10 bg-sky" />
         <div className="p-6 sm:p-8 bg-cream border-2 border-ink shadow-card">
           <button
             onClick={() => navigate(-1)}
@@ -140,9 +215,9 @@ export default function NewListing() {
             <ArrowLeft size={14} /> Back
           </button>
 
-          <h1 className="font-display text-ink text-3xl mb-1">Pin something up</h1>
+          <h1 className="font-display text-ink text-3xl mb-1">Edit listing</h1>
           <p className="font-body text-inkSoft text-[13px] font-bold mb-6">
-            At least {MIN_PHOTOS} photos, a price, and a description — that's it.
+            You can only make one round of edits every 2 hours, so make them count.
           </p>
 
           {error && (
@@ -152,46 +227,60 @@ export default function NewListing() {
           )}
 
           <form onSubmit={handleReviewClick} className="flex flex-col gap-5">
-            {/* Photos */}
             <div>
               <span className="font-mono text-[11px] text-inkSoft">
-                PHOTOS ({photos.length}/{MAX_PHOTOS}, minimum {MIN_PHOTOS}) — tap the star to set
-                the cover photo
+                PHOTOS ({totalPhotoCount}/{MAX_PHOTOS}, minimum {MIN_PHOTOS}) — tap the star to
+                set the cover photo
               </span>
               <div className="grid grid-cols-3 gap-3 mt-2">
-                {photos.map((p, i) => (
+                {existingPhotos.map((url) => (
                   <div
-                    key={i}
+                    key={url}
                     className={`relative aspect-square border-2 overflow-hidden ${
-                      i === coverIndex ? "border-red" : "border-ink"
+                      url === coverUrl ? "border-red" : "border-ink"
                     }`}
                   >
-                    <img src={p.previewUrl} alt="" className="w-full h-full object-cover" />
+                    <img src={url} alt="" className="w-full h-full object-cover" />
                     <button
                       type="button"
-                      onClick={() => setCoverIndex(i)}
+                      onClick={() => setCoverUrl(url)}
                       title="Set as cover photo"
                       className={`absolute bottom-1 left-1 rounded-full w-6 h-6 flex items-center justify-center border ${
-                        i === coverIndex ? "bg-red text-cream border-ink" : "bg-cream text-ink border-ink"
+                        url === coverUrl ? "bg-red text-cream border-ink" : "bg-cream text-ink border-ink"
                       }`}
                     >
-                      <Star size={13} fill={i === coverIndex ? "currentColor" : "none"} />
+                      <Star size={13} fill={url === coverUrl ? "currentColor" : "none"} />
                     </button>
                     <button
                       type="button"
-                      onClick={() => removePhoto(i)}
+                      onClick={() => removeExisting(url)}
                       className="absolute top-1 right-1 bg-ink text-cream rounded-full w-6 h-6 flex items-center justify-center"
                     >
                       <X size={13} />
                     </button>
-                    {i === coverIndex && (
+                    {url === coverUrl && (
                       <span className="absolute top-1 left-1 px-1.5 py-0.5 text-[9px] font-bold font-mono bg-red text-cream">
                         COVER
                       </span>
                     )}
                   </div>
                 ))}
-                {photos.length < MAX_PHOTOS && (
+                {newPhotos.map((p, i) => (
+                  <div key={i} className="relative aspect-square border-2 border-mint overflow-hidden">
+                    <img src={p.previewUrl} alt="" className="w-full h-full object-cover" />
+                    <button
+                      type="button"
+                      onClick={() => removeNew(i)}
+                      className="absolute top-1 right-1 bg-ink text-cream rounded-full w-6 h-6 flex items-center justify-center"
+                    >
+                      <X size={13} />
+                    </button>
+                    <span className="absolute bottom-1 left-1 px-1.5 py-0.5 text-[9px] font-bold font-mono bg-mint text-ink">
+                      NEW
+                    </span>
+                  </div>
+                ))}
+                {totalPhotoCount < MAX_PHOTOS && (
                   <label className="aspect-square border-2 border-dashed border-ink flex flex-col items-center justify-center gap-1 cursor-pointer text-inkSoft">
                     <Upload size={20} />
                     <span className="text-[11px] font-body font-bold">Add photo</span>
@@ -213,7 +302,6 @@ export default function NewListing() {
                 required
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                placeholder="Mini fridge, works great"
                 className="font-body px-3 py-2 border-2 border-ink bg-white text-sm outline-none"
               />
             </label>
@@ -225,7 +313,6 @@ export default function NewListing() {
                 rows={4}
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                placeholder="What is it, why you're selling it, any flaws to know about..."
                 className="font-body px-3 py-2 border-2 border-ink bg-white text-sm outline-none"
               />
             </label>
@@ -240,7 +327,6 @@ export default function NewListing() {
                   step="1"
                   value={price}
                   onChange={(e) => setPrice(e.target.value)}
-                  placeholder="0 for free"
                   className="font-body px-3 py-2 border-2 border-ink bg-white text-sm outline-none"
                 />
               </label>
@@ -281,7 +367,6 @@ export default function NewListing() {
                   required
                   value={loc}
                   onChange={(e) => setLoc(e.target.value)}
-                  placeholder="North Quad, Wells Hall..."
                   className="font-body px-3 py-2 border-2 border-ink bg-white text-sm outline-none"
                 />
               </label>
@@ -295,16 +380,15 @@ export default function NewListing() {
                 rows={2}
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
-                placeholder="Cash only, prefer venmo, must pick up by Friday, comes with charger..."
                 className="font-body px-3 py-2 border-2 border-ink bg-white text-sm outline-none"
               />
             </label>
 
             <button
               type="submit"
-              className="mt-2 py-2.5 text-sm font-bold font-body bg-red text-cream border-2 border-ink shadow-pin"
+              className="mt-2 py-2.5 text-sm font-bold font-body bg-sky text-ink border-2 border-ink shadow-pin"
             >
-              Review and pin it to the board
+              Review changes
             </button>
           </form>
         </div>
@@ -312,11 +396,11 @@ export default function NewListing() {
 
       <ConfirmDialog
         open={showConfirm}
-        title="Post this listing?"
-        message={`"${title}" for $${price || 0} will go live on the board right away, visible to the whole campus. Double check your photos and price before confirming.`}
-        confirmLabel="Yes, post it"
+        title="Save these changes?"
+        message="This uses up your edit for the next 2 hours, so make sure everything's right before confirming."
+        confirmLabel="Yes, save changes"
         busy={busy}
-        onConfirm={handleConfirmPost}
+        onConfirm={handleConfirmSave}
         onCancel={() => setShowConfirm(false)}
       />
     </div>
