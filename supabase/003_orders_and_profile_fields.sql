@@ -25,7 +25,7 @@ $$ language plpgsql security definer;
 -- (trigger "on_auth_user_created" from schema.sql already points at this function)
 
 -- NOTE ON PRIVACY: the existing "Profiles are viewable by everyone" policy from
--- schema.sql means every signed-in visitor can now also read everyone's email via
+-- schema.sql means every signed-in visitor can also read everyone's email via
 -- the profiles table (needed so sellers can look up a buyer by campus email when
 -- marking something sold). If you'd rather lock that down later, we can move email
 -- lookups behind a security-definer function instead of a public column.
@@ -33,7 +33,7 @@ $$ language plpgsql security definer;
 -- 2. Cooldown: a listing can only be edited once every 2 hours
 alter table listings add column if not exists last_edited_at timestamptz;
 
-create or replace function public.enforce_listing_edit_cooldown()
+create or replace function public.enforce_edit_cooldown()
 returns trigger as $$
 begin
   if OLD.last_edited_at is not null and (now() - OLD.last_edited_at) < interval '2 hours' then
@@ -47,15 +47,18 @@ $$ language plpgsql;
 drop trigger if exists listings_edit_cooldown on listings;
 create trigger listings_edit_cooldown
   before update on listings
-  for each row execute procedure public.enforce_listing_edit_cooldown();
+  for each row execute procedure public.enforce_edit_cooldown();
 
--- 3. Orders: history of sold items, visible only to the buyer and seller involved
+-- 3. Orders: history of sold items, visible only to the buyer and seller involved.
+-- Columns mirror exactly what markSold.js writes and Profile.jsx / ListingDetail.jsx
+-- read: a full snapshot of the listing at time of sale (not a foreign key to
+-- listings, since the listing row is deleted once it's sold).
 create table if not exists orders (
   id bigint generated always as identity primary key,
   listing_id bigint,
   seller_id uuid references auth.users (id) on delete set null,
   buyer_id uuid references auth.users (id) on delete set null,
-  buyer_email text,
+  buyer_email text not null,
   title text,
   description text,
   price numeric,

@@ -3,11 +3,11 @@ import { Routes, Route } from "react-router-dom";
 import Header from "./components/Header";
 import Landing from "./pages/Landing";
 import Login from "./pages/Login";
+import ResetPassword from "./pages/ResetPassword";
 import Profile from "./pages/Profile";
 import NewListing from "./pages/NewListing";
 import EditListing from "./pages/EditListing";
 import ListingDetail from "./pages/ListingDetail";
-import Messages from "./pages/Messages";
 import ProtectedRoute from "./components/ProtectedRoute";
 
 export default function App() {
@@ -17,6 +17,7 @@ export default function App() {
       <Routes>
         <Route path="/" element={<Landing />} />
         <Route path="/login" element={<Login />} />
+        <Route path="/reset-password" element={<ResetPassword />} />
         <Route path="/listing/:id" element={<ListingDetail />} />
         <Route
           path="/profile"
@@ -39,22 +40,6 @@ export default function App() {
           element={
             <ProtectedRoute>
               <EditListing />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/messages"
-          element={
-            <ProtectedRoute>
-              <Messages />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/messages/:requestId"
-          element={
-            <ProtectedRoute>
-              <Messages />
             </ProtectedRoute>
           }
         />

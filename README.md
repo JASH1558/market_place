@@ -7,10 +7,14 @@ cards.
 ## 1. Create a Supabase project
 
 1. Go to https://supabase.com and create a new project (free tier is fine).
-2. In your project, open **SQL Editor** and run the contents of `supabase/schema.sql`
-   in this repo. This creates the `profiles` and `listings` tables, sets up row-level
-   security so people can only edit their own data, and auto-creates a profile row
-   whenever someone signs up.
+2. In your project, open **SQL Editor** and run these files **in order**:
+   1. `supabase/schema.sql` — `profiles` + `listings` base tables and RLS
+   2. `supabase/002_listing_photos.sql` — photo/description/condition columns + the
+      `listing-photos` storage bucket
+   3. `supabase/003_orders_and_profile_fields.sql` — `profiles.email/degree/year/branch`,
+      the listing edit-cooldown trigger, and the `orders` table
+   4. `supabase/004_requests_notifications_ratings.sql` — `interest_requests`,
+      `notifications`, `ratings`
 3. Go to **Project Settings > API** and copy your **Project URL** and **anon public
    key**.
 

@@ -10,7 +10,7 @@ export default function Login() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
-  const { signIn, signUp } = useAuth();
+  const { signIn, signUp, resetPasswordForEmail } = useAuth();
   const navigate = useNavigate();
 
   async function handleSubmit(e) {
@@ -22,10 +22,13 @@ export default function Login() {
       if (mode === "login") {
         await signIn(email, password);
         navigate("/profile");
-      } else {
+      } else if (mode === "signup") {
         await signUp(email, password);
         setNotice("Check your campus email to confirm your account, then log in.");
         setMode("login");
+      } else if (mode === "forgot") {
+        await resetPasswordForEmail(email);
+        setNotice("If that email has an account, a reset link is on its way — check your inbox.");
       }
     } catch (err) {
       setError(err.message || "Something went wrong.");
@@ -47,10 +50,14 @@ export default function Login() {
           </Link>
 
           <h1 className="font-display text-ink text-3xl">
-            {mode === "login" ? "Welcome back" : "Join the Quad"}
+            {mode === "login" ? "Welcome back" : mode === "signup" ? "Join the Quad" : "Reset your password"}
           </h1>
           <p className="font-body text-inkSoft text-[13px] font-bold mb-6">
-            {mode === "login" ? "Log in with your campus email." : "Sign up with your campus email."}
+            {mode === "login"
+              ? "Log in with your campus email."
+              : mode === "signup"
+              ? "Sign up with your campus email."
+              : "We'll email you a link to set a new password."}
           </p>
 
           {error && (
@@ -79,43 +86,80 @@ export default function Login() {
                 />
               </div>
             </label>
-            <label className="flex flex-col gap-1">
-              <span className="font-mono text-[11px] text-inkSoft">PASSWORD</span>
-              <div className="flex items-center gap-2 px-3 py-2 bg-white border-2 border-ink">
-                <Lock size={15} className="text-inkSoft" />
-                <input
-                  type="password"
-                  required
-                  minLength={6}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
-                  className="font-body w-full border-none outline-none text-sm bg-transparent"
-                />
-              </div>
-            </label>
+            {mode !== "forgot" && (
+              <label className="flex flex-col gap-1">
+                <span className="font-mono text-[11px] text-inkSoft">PASSWORD</span>
+                <div className="flex items-center gap-2 px-3 py-2 bg-white border-2 border-ink">
+                  <Lock size={15} className="text-inkSoft" />
+                  <input
+                    type="password"
+                    required
+                    minLength={6}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="••••••••"
+                    className="font-body w-full border-none outline-none text-sm bg-transparent"
+                  />
+                </div>
+              </label>
+            )}
+
+            {mode === "login" && (
+              <button
+                type="button"
+                onClick={() => {
+                  setMode("forgot");
+                  setError("");
+                  setNotice("");
+                }}
+                className="self-end text-xs font-bold font-body text-inkSoft hover:text-red -mt-2"
+              >
+                Forgot password?
+              </button>
+            )}
 
             <button
               type="submit"
               disabled={busy}
               className="mt-2 py-2.5 text-sm font-bold font-body bg-red text-cream border-2 border-ink shadow-pin disabled:opacity-60"
             >
-              {busy ? "Please wait..." : mode === "login" ? "Log in" : "Create account"}
+              {busy
+                ? "Please wait..."
+                : mode === "login"
+                ? "Log in"
+                : mode === "signup"
+                ? "Create account"
+                : "Send reset link"}
             </button>
           </form>
 
           <p className="font-body text-[13px] text-inkSoft font-bold mt-5 text-center">
-            {mode === "login" ? "New to campus? " : "Already have an account? "}
-            <button
-              onClick={() => {
-                setMode(mode === "login" ? "signup" : "login");
-                setError("");
-                setNotice("");
-              }}
-              className="text-red font-extrabold bg-transparent border-none cursor-pointer"
-            >
-              {mode === "login" ? "Sign up" : "Log in"}
-            </button>
+            {mode === "forgot" ? (
+              <button
+                onClick={() => {
+                  setMode("login");
+                  setError("");
+                  setNotice("");
+                }}
+                className="text-red font-extrabold bg-transparent border-none cursor-pointer"
+              >
+                Back to log in
+              </button>
+            ) : (
+              <>
+                {mode === "login" ? "New to campus? " : "Already have an account? "}
+                <button
+                  onClick={() => {
+                    setMode(mode === "login" ? "signup" : "login");
+                    setError("");
+                    setNotice("");
+                  }}
+                  className="text-red font-extrabold bg-transparent border-none cursor-pointer"
+                >
+                  {mode === "login" ? "Sign up" : "Log in"}
+                </button>
+              </>
+            )}
           </p>
         </div>
       </div>
