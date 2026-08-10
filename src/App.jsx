@@ -8,6 +8,8 @@ import Profile from "./pages/Profile";
 import NewListing from "./pages/NewListing";
 import EditListing from "./pages/EditListing";
 import ListingDetail from "./pages/ListingDetail";
+import Notifications from "./pages/Notifications";
+import NotFound from "./pages/NotFound";
 import ProtectedRoute from "./components/ProtectedRoute";
 
 export default function App() {
@@ -43,6 +45,15 @@ export default function App() {
             </ProtectedRoute>
           }
         />
+        <Route
+          path="/notifications"
+          element={
+            <ProtectedRoute>
+              <Notifications />
+            </ProtectedRoute>
+          }
+        />
+        <Route path="*" element={<NotFound />} />
       </Routes>
     </div>
   );

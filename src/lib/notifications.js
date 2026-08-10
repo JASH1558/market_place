@@ -26,39 +26,23 @@ export async function markNotificationsRead(ids) {
   await supabase.from("notifications").update({ read: true }).in("id", ids);
 }
 
-// Live-streams new notification rows for this user instead of polling.
-// Returns an unsubscribe function.
-export function subscribeToNotifications(userId, onInsert) {
-  const channel = supabase
-    .channel(`notifications:${userId}`)
-    .on(
-      "postgres_changes",
-      { event: "INSERT", schema: "public", table: "notifications", filter: `user_id=eq.${userId}` },
-      (payload) => onInsert(payload.new)
-    )
-    .subscribe();
-
-  return () => supabase.removeChannel(channel);
-}
-
 // Reminders for a seller's own listings that have been up for a while.
-// Not stored in the DB — computed fresh each time the bell opens — except for
-// which ones the user has dismissed, which IS stored (dismissed_reminders).
+// Not stored in the DB — computed fresh each time the bell opens — but a
+// dismissal IS persisted via listings.stale_dismissed_at so a reminder the
+// seller has already seen and dismissed doesn't keep coming back.
 const STALE_AFTER_DAYS = 14;
 
 export async function fetchStaleListingReminders(userId) {
-  const [{ data: listings }, { data: dismissed }] = await Promise.all([
-    supabase.from("listings").select("id, title, created_at").eq("seller_id", userId),
-    supabase.from("dismissed_reminders").select("listing_id").eq("user_id", userId),
-  ]);
+  const { data } = await supabase
+    .from("listings")
+    .select("id, title, created_at")
+    .eq("seller_id", userId)
+    .is("stale_dismissed_at", null);
 
-  if (!listings) return [];
+  if (!data) return [];
 
-  const dismissedIds = new Set((dismissed || []).map((d) => d.listing_id));
   const now = Date.now();
-
-  return listings
-    .filter((l) => !dismissedIds.has(l.id))
+  return data
     .map((l) => {
       const days = Math.floor((now - new Date(l.created_at).getTime()) / (1000 * 60 * 60 * 24));
       return { ...l, days };
@@ -66,6 +50,7 @@ export async function fetchStaleListingReminders(userId) {
     .filter((l) => l.days >= STALE_AFTER_DAYS)
     .map((l) => ({
       id: `stale-${l.id}`,
+      listingId: l.id,
       type: "stale_listing",
       title: "Still sitting on the board",
       body: `It's been ${l.days} days since you posted "${l.title}" — maybe bump the price or check if it's still around.`,
@@ -76,9 +61,19 @@ export async function fetchStaleListingReminders(userId) {
     }));
 }
 
-export async function dismissStaleReminder(userId, listingId) {
-  const { error } = await supabase
-    .from("dismissed_reminders")
-    .upsert({ user_id: userId, listing_id: listingId });
-  if (error) throw error;
+export async function dismissStaleListingReminder(listingId) {
+  await supabase
+    .from("listings")
+    .update({ stale_dismissed_at: new Date().toISOString() })
+    .eq("id", listingId);
+}
+
+// The "phone_shared" notification body is written by us in a fixed format
+// ("...shared their number for "X": <phone>"), so we can pull the number
+// back out to put a Copy button next to it instead of making people
+// select the text by hand.
+export function extractPhoneFromBody(body) {
+  if (!body) return null;
+  const match = body.match(/:\s*([+\d][\d\s\-().]{5,})$/);
+  return match ? match[1].trim() : null;
 }

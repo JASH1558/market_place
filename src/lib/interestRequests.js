@@ -44,20 +44,6 @@ export async function sendInterestRequest({ listing, buyerId, buyerName, message
   return data;
 }
 
-// Used by ListingDetail to find "my" thread for this listing (as buyer or
-// seller) so it can link straight into the right chat.
-export async function getMyRequestForListing(listingId, userId) {
-  const { data } = await supabase
-    .from("interest_requests")
-    .select("*")
-    .eq("listing_id", listingId)
-    .or(`buyer_id.eq.${userId},seller_id.eq.${userId}`)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  return data || null;
-}
-
 export async function fetchActionableRequests(userId) {
   const { data: pendingForMe } = await supabase
     .from("interest_requests")
@@ -78,6 +64,20 @@ export async function fetchActionableRequests(userId) {
     pendingForMe: pendingForMe || [],
     awaitingMyPhone: awaitingMyPhone || [],
   };
+}
+
+// Buyers a seller has already accepted for a given listing — used so
+// "mark as sold" can offer a pick-list instead of asking the seller to
+// type the buyer's email from memory.
+export async function fetchAcceptedRequestsForListing(listingId, sellerId) {
+  const { data } = await supabase
+    .from("interest_requests")
+    .select("*")
+    .eq("listing_id", listingId)
+    .eq("seller_id", sellerId)
+    .eq("status", "accepted")
+    .order("responded_at", { ascending: false });
+  return data || [];
 }
 
 export async function respondToRequest(request, accept) {
@@ -115,28 +115,4 @@ export async function sharePhone(request, phone) {
     listingId: request.listing_id,
     requestId: request.id,
   });
-}
-
-// Live-streams inserts/updates on interest_requests that involve this user
-// (as either buyer or seller) so the notification bell's "actionable" lists
-// (new requests / accepted requests awaiting phone share) update instantly
-// instead of on a poll interval. RLS already limits what a client can see,
-// so no extra server-side filtering is needed here — this just tells the
-// caller "something changed, go refetch". Returns an unsubscribe function.
-export function subscribeToRequestChanges(userId, onChange) {
-  const channel = supabase
-    .channel(`interest_requests:${userId}`)
-    .on(
-      "postgres_changes",
-      { event: "*", schema: "public", table: "interest_requests", filter: `seller_id=eq.${userId}` },
-      onChange
-    )
-    .on(
-      "postgres_changes",
-      { event: "*", schema: "public", table: "interest_requests", filter: `buyer_id=eq.${userId}` },
-      onChange
-    )
-    .subscribe();
-
-  return () => supabase.removeChannel(channel);
 }
