@@ -21,9 +21,22 @@ export function AuthProvider({ children }) {
   }, []);
 
   const signUp = async (email, password) => {
-    const { data, error } = await supabase.auth.signUp({ email, password });
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: { emailRedirectTo: `${window.location.origin}/profile` },
+    });
     if (error) throw error;
     return data;
+  };
+
+  const resendVerificationEmail = async (email) => {
+    const { error } = await supabase.auth.resend({
+      type: "signup",
+      email,
+      options: { emailRedirectTo: `${window.location.origin}/profile` },
+    });
+    if (error) throw error;
   };
 
   const signIn = async (email, password) => {
@@ -58,6 +71,7 @@ export function AuthProvider({ children }) {
     signOut,
     resetPasswordForEmail,
     updatePassword,
+    resendVerificationEmail,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
