@@ -12,6 +12,22 @@ export async function hasPendingRequest(listingId, buyerId) {
   return !!data;
 }
 
+// The buyer's most recent request for a given listing, regardless of status.
+// ListingDetail uses this to decide what to show in the CTA slot: "I'm
+// interested" if there's no request (or the last one was declined), or the
+// "request sent" / "share your number" state if one is pending/accepted.
+export async function getMyRequestForListing(listingId, buyerId) {
+  const { data } = await supabase
+    .from("interest_requests")
+    .select("*")
+    .eq("listing_id", listingId)
+    .eq("buyer_id", buyerId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  return data || null;
+}
+
 export async function sendInterestRequest({ listing, buyerId, buyerName, message }) {
   const already = await hasPendingRequest(listing.id, buyerId);
   if (already) throw new Error("You've already sent a request for this listing.");

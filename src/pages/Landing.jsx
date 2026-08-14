@@ -2,9 +2,12 @@ import React, { useEffect, useState } from "react";
 import { Search } from "lucide-react";
 import { StickyCard } from "../components/Bits";
 import { supabase } from "../lib/supabaseClient";
+import { useAuth } from "../lib/AuthContext";
+import { fetchBlockedIdSet } from "../lib/safety";
 import { SAMPLE_LISTINGS, CATEGORIES } from "../lib/sampleData";
 
 export default function Landing() {
+  const { user } = useAuth();
   const [listings, setListings] = useState(SAMPLE_LISTINGS);
   const [query, setQuery] = useState("");
   const [activeCategory, setActiveCategory] = useState(null);
@@ -13,18 +16,29 @@ export default function Landing() {
     async function loadListings() {
       const { data, error } = await supabase
         .from("listings")
-        .select("id, emoji, title, price, seller, loc, images, description, condition, category")
+        .select("id, seller_id, emoji, title, price, seller, loc, images, description, condition, category")
         .order("created_at", { ascending: false })
         .limit(50);
 
-      if (!error && data && data.length > 0) {
-        setListings(data);
+      if (error || !data || data.length === 0) {
+        // On error or empty table, we silently keep the sample listings
+        // so the page still looks alive before you've added real data.
+        return;
       }
-      // On error or empty table, we silently keep the sample listings
-      // so the page still looks alive before you've added real data.
+
+      if (!user) {
+        setListings(data);
+        return;
+      }
+
+      // Hide listings from anyone in a block relationship with the current
+      // user, either direction — a blocked seller's stuff shouldn't keep
+      // showing up on your board.
+      const blockedIds = await fetchBlockedIdSet(user.id);
+      setListings(blockedIds.size === 0 ? data : data.filter((l) => !blockedIds.has(l.seller_id)));
     }
     loadListings();
-  }, []);
+  }, [user]);
 
   const filtered = listings.filter((item) => {
     const matchesQuery = item.title.toLowerCase().includes(query.toLowerCase());

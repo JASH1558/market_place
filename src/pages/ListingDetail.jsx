@@ -1,13 +1,31 @@
 import React, { useEffect, useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
-import { ArrowLeft, MapPin, Tag, Sparkles, Trash2, Pencil, CheckCircle2, Heart, Star, MessageCircle } from "lucide-react";
+import {
+  ArrowLeft,
+  MapPin,
+  Tag,
+  Sparkles,
+  Trash2,
+  Pencil,
+  CheckCircle2,
+  Heart,
+  Star,
+  MessageCircle,
+  MoreVertical,
+  Flag,
+  ShieldOff,
+} from "lucide-react";
 import { useAuth } from "../lib/AuthContext";
 import { supabase } from "../lib/supabaseClient";
 import { deleteListingWithPhotos } from "../lib/deleteListing";
 import { getAverageRating } from "../lib/ratings";
 import { getMyRequestForListing } from "../lib/interestRequests";
+import { isBlockedEitherWay } from "../lib/safety";
 import MarkSoldDialog from "../components/MarkSoldDialog";
 import InterestDialog from "../components/InterestDialog";
+import BottomSheet from "../components/BottomSheet";
+import ReportDialog from "../components/ReportDialog";
+import BlockUserDialog from "../components/BlockUserDialog";
 
 export default function ListingDetail() {
   const { id } = useParams();
@@ -26,6 +44,13 @@ export default function ListingDetail() {
   const [sellerRating, setSellerRating] = useState({ average: null, count: 0 });
   const [myName, setMyName] = useState("");
   const [myRequestId, setMyRequestId] = useState(null);
+
+  // Trust & safety
+  const [showActionsSheet, setShowActionsSheet] = useState(false);
+  const [showReportListing, setShowReportListing] = useState(false);
+  const [showReportSeller, setShowReportSeller] = useState(false);
+  const [showBlockSeller, setShowBlockSeller] = useState(false);
+  const [blockedWithSeller, setBlockedWithSeller] = useState(false);
 
   useEffect(() => {
     async function load() {
@@ -87,6 +112,14 @@ export default function ListingDetail() {
     loadMyRequest();
   }, [user, listing]);
 
+  useEffect(() => {
+    async function checkBlock() {
+      if (!user || !listing?.seller_id || listing.seller_id === user.id) return;
+      setBlockedWithSeller(await isBlockedEitherWay(user.id, listing.seller_id));
+    }
+    checkBlock();
+  }, [user, listing]);
+
   if (loading) {
     return <div className="p-10 text-center font-body text-cream">Loading listing...</div>;
   }
@@ -107,6 +140,7 @@ export default function ListingDetail() {
 
   const photos = listing.images && listing.images.length > 0 ? listing.images : null;
   const isOwner = user && listing.seller_id === user.id;
+  const canReportOrBlock = user && !isOwner && listing.seller_id;
 
   async function handleDelete() {
     const confirmed = window.confirm(`Delete "${listing.title}"? This can't be undone.`);
@@ -124,12 +158,24 @@ export default function ListingDetail() {
   return (
     <div className="px-6 py-12 sm:px-10">
       <div className="max-w-4xl mx-auto">
-        <button
-          onClick={() => navigate(-1)}
-          className="flex items-center gap-1 text-xs font-bold font-body text-cream mb-6"
-        >
-          <ArrowLeft size={14} /> Back
-        </button>
+        <div className="flex items-center justify-between mb-6">
+          <button
+            onClick={() => navigate(-1)}
+            className="flex items-center gap-1 text-xs font-bold font-body text-cream"
+          >
+            <ArrowLeft size={14} /> Back
+          </button>
+
+          {canReportOrBlock && (
+            <button
+              onClick={() => setShowActionsSheet(true)}
+              aria-label="More options"
+              className="w-10 h-10 flex items-center justify-center rounded-full bg-cream/95 border-2 border-ink text-ink"
+            >
+              <MoreVertical size={18} />
+            </button>
+          )}
+        </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
           {/* Photos */}
@@ -239,6 +285,10 @@ export default function ListingDetail() {
                       >
                         Log in to express interest
                       </Link>
+                    ) : blockedWithSeller ? (
+                      <p className="mt-4 w-full text-center py-2.5 text-sm font-bold font-body bg-ink/10 text-inkSoft border-2 border-ink/20">
+                        You can't contact this seller.
+                      </p>
                     ) : requestSent ? (
                       <div className="mt-4 flex flex-col gap-2">
                         <p className="w-full text-center py-2.5 text-sm font-bold font-body bg-mint/40 text-ink border-2 border-ink">
@@ -322,6 +372,81 @@ export default function ListingDetail() {
             if (req) setMyRequestId(req.id);
           }}
         />
+      )}
+
+      {/* Mobile-first overflow action sheet: report / block */}
+      <BottomSheet
+        open={showActionsSheet}
+        onClose={() => setShowActionsSheet(false)}
+        title="Options"
+      >
+        <div className="flex flex-col gap-2 -mt-1">
+          <button
+            type="button"
+            onClick={() => {
+              setShowActionsSheet(false);
+              setShowReportListing(true);
+            }}
+            className="flex items-center gap-3 px-3 py-3.5 text-left font-body text-sm text-ink"
+          >
+            <Flag size={18} className="text-inkSoft" /> Report this listing
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setShowActionsSheet(false);
+              setShowReportSeller(true);
+            }}
+            className="flex items-center gap-3 px-3 py-3.5 text-left font-body text-sm text-ink border-t border-ink/10"
+          >
+            <Flag size={18} className="text-inkSoft" /> Report the seller
+          </button>
+          {!blockedWithSeller && (
+            <button
+              type="button"
+              onClick={() => {
+                setShowActionsSheet(false);
+                setShowBlockSeller(true);
+              }}
+              className="flex items-center gap-3 px-3 py-3.5 text-left font-body text-sm text-red border-t border-ink/10"
+            >
+              <ShieldOff size={18} /> Block this seller
+            </button>
+          )}
+        </div>
+      </BottomSheet>
+
+      {user && canReportOrBlock && (
+        <>
+          <ReportDialog
+            open={showReportListing}
+            onClose={() => setShowReportListing(false)}
+            reporterId={user.id}
+            target={{
+              listingId: listing.id,
+              listingTitle: listing.title,
+              reportedUserId: listing.seller_id,
+              reportedUserName: seller?.full_name || listing.seller,
+            }}
+          />
+          <ReportDialog
+            open={showReportSeller}
+            onClose={() => setShowReportSeller(false)}
+            reporterId={user.id}
+            target={{
+              reportedUserId: listing.seller_id,
+              reportedUserName: seller?.full_name || listing.seller,
+            }}
+          />
+          <BlockUserDialog
+            open={showBlockSeller}
+            onClose={() => setShowBlockSeller(false)}
+            blockerId={user.id}
+            blockedId={listing.seller_id}
+            blockedName={seller?.full_name || listing.seller}
+            onBlocked={() => setBlockedWithSeller(true)}
+          />
+        </>
       )}
     </div>
   );

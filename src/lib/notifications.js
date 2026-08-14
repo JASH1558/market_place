@@ -1,5 +1,34 @@
 import { supabase } from "./supabaseClient";
 
+// ---------------------------------------------------------------------------
+// Email notifications — currently a no-op stub.
+//
+// Every in-app notification created via notifyUser() below also calls this,
+// so wiring up a real provider here makes ALL existing notification types
+// (interest_request, request_accepted, request_declined, phone_shared) send
+// email at once — no other file needs to change.
+//
+// To go live:
+//   1. Add an account with Resend (https://resend.com) or Postmark, and put
+//      the API key in a server-side env var — NOT a VITE_ prefixed one, since
+//      that would ship the key to the browser. This means the actual send
+//      needs to happen from a Supabase Edge Function or other backend, not
+//      directly from this client file.
+//   2. Simplest path: create a Supabase Edge Function (e.g. `send-email`)
+//      that takes { to, subject, body } and calls Resend/Postmark from the
+//      server side, then replace the TODO below with:
+//        await supabase.functions.invoke('send-email', { body: { to, subject, body } });
+//   3. `to` needs to be an email address, not a user id — look it up via
+//      profiles.email (see markSold.js findProfileById for the pattern),
+//      or better, have the Edge Function resolve it server-side so the
+//      client never needs read access to other users' emails.
+// ---------------------------------------------------------------------------
+async function notifyEmail({ userId, title, body }) {
+  // TODO: replace with a real send once an email provider is connected.
+  // eslint-disable-next-line no-console
+  console.info(`[email stub] would email user ${userId}: "${title}" — ${body}`);
+}
+
 export async function notifyUser({ userId, type, title, body, listingId, requestId }) {
   await supabase.from("notifications").insert({
     user_id: userId,
@@ -9,6 +38,14 @@ export async function notifyUser({ userId, type, title, body, listingId, request
     listing_id: listingId || null,
     request_id: requestId || null,
   });
+
+  // Best-effort — an email failure shouldn't block the in-app notification
+  // that already succeeded above.
+  try {
+    await notifyEmail({ userId, title, body });
+  } catch {
+    // swallow; in-app notification is the source of truth either way
+  }
 }
 
 export async function fetchNotifications(userId, limit = 25) {

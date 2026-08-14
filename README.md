@@ -15,6 +15,22 @@ cards.
       the listing edit-cooldown trigger, and the `orders` table
    4. `supabase/004_requests_notifications_ratings.sql` — `interest_requests`,
       `notifications`, `ratings`
+   5. `supabase/005_messages.sql` — `messages` table for buyer/seller chat, threaded
+      off `interest_requests` (needed by the Messages page and the messages badge)
+   6. `supabase/006_lock_down_profile_email.sql` — locks `profiles` down to the
+      owner's own row and adds the `public_profiles` view used everywhere else in
+      the app to show another user's name/major/dorm without exposing email
+   7. `supabase/005_realtime.sql` — adds `notifications`/`interest_requests` to the
+      realtime publication (note: shares a `005` prefix with `005_messages.sql`;
+      they're independent, order between the two doesn't matter, just run both)
+   8. `supabase/007_realtime.sql` — adds `messages` to the realtime publication and
+      sets full replica identity on all three realtime tables
+   9. `supabase/008_dismissed_reminders.sql` — `dismissed_reminders` table, needed
+      for the "Dismiss" button on stale-listing reminders in Notifications
+   10. `supabase/009_reports_and_blocks.sql` — `reports` + `blocked_users` tables,
+       and RLS changes so a block is enforced at the database level (a blocked
+       user can't open a new interest request or send a new message to you,
+       not just have it hidden client-side)
 3. Go to **Project Settings > API** and copy your **Project URL** and **anon public
    key**.
 
@@ -52,7 +68,7 @@ Visit http://localhost:5173.
   name, major, dorm, and bio — this writes to the `profiles` table.
 - The **Landing** page reads from the `listings` table. It's empty at first, so it
   falls back to sample listings so the page doesn't look dead — insert a few rows
-  into `listings` (or build a "post a listing" form next) to see real data.
+  into `listings` (or use "Post something" in the header) to see real data.
 
 ## 5. Deploy
 
@@ -70,16 +86,22 @@ Deploy the generated `dist/` folder.
 
 ```
 src/
-  components/     Header, ProtectedRoute, shared sticky-note card
-  lib/            Supabase client, auth context, sample data
-  pages/          Landing, Login, Profile
-supabase/
-  schema.sql      Run this once in your Supabase SQL editor
+  components/     Header, ProtectedRoute, shared sticky-note card, dialogs
+  lib/            Supabase client, auth context, notifications, messages, ratings
+  pages/          Landing, Login, Profile, listings, messages, notifications
+supabase/         Run these in order — see "Create a Supabase project" above
 ```
 
 ## What's not built yet
 
-- Posting a new listing (there's a "Post something" button in the header, not wired
-  up yet)
-- An individual listing detail page
-- Search is client-side only and just filters the loaded listings
+- Search is client-side only, filters just the first 50 loaded listings, and has
+  no pagination — anything beyond that isn't reachable by search
+- No way for a buyer to withdraw/cancel an interest request they've sent
+- No admin UI for reviewing filed reports — they land in the `reports` table and
+  need to be reviewed from the Supabase dashboard for now
+- Email notifications are stubbed (see the block comment in `src/lib/notifications.js`)
+  — they log to the console instead of sending until a provider (Resend/Postmark) is
+  wired up through a Supabase Edge Function
+- No rate limiting on posting listings or sending interest requests
+- No payment processing — buyer and seller settle up outside the app; "mark as
+  sold" just records that a sale happened

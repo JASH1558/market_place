@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { MapPin, Star, Pencil, LogOut, Save } from "lucide-react";
+import { MapPin, Star, Pencil, LogOut, Save, ShieldOff, UserX } from "lucide-react";
 import { useAuth } from "../lib/AuthContext";
 import { supabase } from "../lib/supabaseClient";
 import { deleteListingWithPhotos } from "../lib/deleteListing";
@@ -8,6 +8,7 @@ import { StickyCard } from "../components/Bits";
 import MarkSoldDialog from "../components/MarkSoldDialog";
 import RatingDialog from "../components/RatingDialog";
 import { getAverageRating, getMyRatedOrderIds } from "../lib/ratings";
+import { fetchMyBlocks, unblockUser } from "../lib/safety";
 import { DEGREES, YEARS, BRANCHES } from "../lib/profileOptions";
 
 const EMPTY_PROFILE = {
@@ -35,6 +36,8 @@ export default function Profile() {
   const [myRating, setMyRating] = useState({ average: null, count: 0 });
   const [ratedOrderIds, setRatedOrderIds] = useState(new Set());
   const [ratingTarget, setRatingTarget] = useState(null); // { order, rateeId, rateeName }
+  const [blockedUsers, setBlockedUsers] = useState([]);
+  const [unblockingId, setUnblockingId] = useState(null);
 
   useEffect(() => {
     async function load() {
@@ -68,6 +71,8 @@ export default function Profile() {
       const rated = await getMyRatedOrderIds(user.id);
       setRatedOrderIds(rated);
 
+      setBlockedUsers(await fetchMyBlocks(user.id));
+
       setLoading(false);
     }
     load();
@@ -96,6 +101,18 @@ export default function Profile() {
 
   function handleSoldComplete(listingId) {
     setListings((prev) => prev.filter((l) => l.id !== listingId));
+  }
+
+  async function handleUnblock(blockedId) {
+    setUnblockingId(blockedId);
+    try {
+      await unblockUser(user.id, blockedId);
+      setBlockedUsers((prev) => prev.filter((b) => b.id !== blockedId));
+    } catch (err) {
+      alert(err.message || "Couldn't unblock that user.");
+    } finally {
+      setUnblockingId(null);
+    }
   }
 
   const initials = (profile.full_name || user.email || "?")
@@ -296,11 +313,11 @@ export default function Profile() {
         </div>
 
         {visibleOrders.length === 0 ? (
-          <p className="font-body text-cream/90">
+          <p className="font-body text-cream/90 mb-14">
             {ordersTab === "sold" ? "Nothing sold yet." : "Nothing bought yet."}
           </p>
         ) : (
-          <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-3 mb-14">
             {visibleOrders.map((o) => (
               <div
                 key={o.id}
@@ -340,6 +357,38 @@ export default function Profile() {
                     </button>
                   )
                 )}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Blocked users */}
+        <h2 className="font-display text-cream drop-shadow-[2px_2px_0_rgba(43,36,64,0.35)] text-xl mb-4 flex items-center gap-2">
+          <ShieldOff size={18} className="text-cream" /> Blocked users
+        </h2>
+        {blockedUsers.length === 0 ? (
+          <p className="font-body text-cream/90">
+            You haven't blocked anyone. Blocking someone stops their listings from showing up
+            for you and stops them from messaging or sending requests.
+          </p>
+        ) : (
+          <div className="flex flex-col gap-2">
+            {blockedUsers.map((b) => (
+              <div
+                key={b.id}
+                className="flex items-center gap-3 p-3 bg-cream border-2 border-ink"
+              >
+                <div className="w-9 h-9 shrink-0 rounded-full bg-red/20 border-2 border-ink flex items-center justify-center">
+                  <UserX size={15} className="text-red" />
+                </div>
+                <p className="flex-1 font-body text-ink text-sm font-bold truncate">{b.full_name}</p>
+                <button
+                  onClick={() => handleUnblock(b.id)}
+                  disabled={unblockingId === b.id}
+                  className="shrink-0 px-3 py-1.5 text-xs font-bold font-body bg-cream text-ink border-2 border-ink disabled:opacity-60"
+                >
+                  {unblockingId === b.id ? "Unblocking..." : "Unblock"}
+                </button>
               </div>
             ))}
           </div>
