@@ -9,6 +9,8 @@ import NewListing from "./pages/NewListing";
 import EditListing from "./pages/EditListing";
 import ListingDetail from "./pages/ListingDetail";
 import Notifications from "./pages/Notifications";
+import Help from "./pages/Help";
+import Feedback from "./pages/Feedback";
 import NotFound from "./pages/NotFound";
 import ProtectedRoute from "./components/ProtectedRoute";
 
@@ -21,6 +23,8 @@ export default function App() {
         <Route path="/login" element={<Login />} />
         <Route path="/reset-password" element={<ResetPassword />} />
         <Route path="/listing/:id" element={<ListingDetail />} />
+        <Route path="/help" element={<Help />} />
+        <Route path="/feedback" element={<Feedback />} />
         <Route
           path="/profile"
           element={

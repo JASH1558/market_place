@@ -4,6 +4,8 @@ import { Plus, User, LogIn } from "lucide-react";
 import { useAuth } from "../lib/AuthContext";
 import NotificationBell from "./NotificationBell";
 import MessagesLink from "./MessagesLink";
+import HelpLink from "./HelpLink";
+import FeedbackLink from "./FeedbackLink";
 
 export default function Header() {
   const { user } = useAuth();
@@ -30,6 +32,9 @@ export default function Header() {
             <Plus size={15} /> Post something
           </button>
         )}
+
+        <HelpLink />
+        <FeedbackLink />
 
         {user && <MessagesLink />}
         {user && <NotificationBell />}
