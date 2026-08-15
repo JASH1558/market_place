@@ -27,9 +27,9 @@ export default function Header() {
         {user && (
           <button
             onClick={() => navigate("/new-listing")}
-            className="hidden sm:inline-flex items-center gap-1 text-sm font-bold font-body px-3 py-1.5 rounded-full bg-yellow text-ink border-2 border-ink"
+            className="inline-flex items-center gap-1 text-sm font-bold font-body px-3 py-1.5 rounded-full bg-yellow text-ink border-2 border-ink"
           >
-            <Plus size={15} /> Post something
+            <Plus size={15} /> <span className="hidden sm:inline">Post something</span>
           </button>
         )}
 
