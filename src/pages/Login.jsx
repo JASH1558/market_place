@@ -24,8 +24,8 @@ export default function Login() {
         navigate("/profile");
       } else if (mode === "signup") {
         await signUp(email, password);
-        setNotice("Check your campus email to confirm your account, then log in.");
-        setNotice("If not found please check in the spam section with header QUAD. ");
+        setNotice("Check your campus email to confirm your account, then log in.
+                  "If not found please check in the spam section with header QUAD. ");
         setMode("login");
       } else if (mode === "forgot") {
         await resetPasswordForEmail(email);
