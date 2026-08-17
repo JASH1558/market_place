@@ -27,9 +27,14 @@ export function AuthProvider({ children }) {
       options: { emailRedirectTo: `${window.location.origin}/profile` },
     });
     if (error) throw error;
+  
+
+    if (data?.user && Array.isArray(data.user.identities) && data.user.identities.length === 0) {
+      throw new Error("An account with that email already exists. Try logging in instead.");
+    }
+  
     return data;
   };
-
   const resendVerificationEmail = async (email) => {
     const { error } = await supabase.auth.resend({
       type: "signup",
